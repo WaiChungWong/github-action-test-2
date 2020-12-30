@@ -1,0 +1,75 @@
+name: GitHub Pages Node.js Deployment
+description: Deploy static files built from Node.js to GitHub Pages
+inputs:
+  node-version: 
+    description: Node version to use
+    required: true
+    default: '12.x'
+  gh-pages-branch: 
+    description: Branch to use as the source for GitHub Pages
+    required: true
+    default: 'gh-pages'
+  gh-pages-path: 
+    description: Path (relative to the branch) to sync the content
+    required: true
+    default: '.'
+  build-branch: 
+    description: Branch to use for building the static files
+    required: true
+    default: 'develop'
+  build-script: 
+    description: Script for running the build
+    required: true
+    default: |
+      npm install
+      npm run build
+  build-path: 
+    description: Path (relative to the branch) of the content to publish
+    required: true
+    default: 'build'
+  commit-author:
+    description: Git author name to use on committing deployments
+    required: true
+    default: 'GitHub Action'
+  commit-email:
+    description: Git author email to use on committing deployments
+    required: true
+    default: 'github-actions@github.com'
+runs:
+  using: composite
+  steps: 
+    - name: Get the current date & time in UTC
+      id: time
+      run: echo "::set-output name=time::$(date -u +'%F %T')"
+    - name: Use Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: ${{ inputs.node-version }}
+    - name: Checkout ${{ inputs.build-branch }}
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ inputs.build-branch }}
+        path: ${{ inputs.build-branch }}
+    - name: Checkout ${{ inputs.gh-pages-branch }}
+      uses: actions/checkout@v2
+      with:
+        ref: ${{ inputs.gh-pages-branch }}
+        path: ${{ inputs.gh-pages-branch }}
+    - name: Run build script
+      working-directory: ${{ inputs.build-branch }}
+      run: ${{ inputs.build-script }}
+    - name: Clear content in ${{ inputs.gh-pages-branch }} branch
+      working-directory: ${{ inputs.gh-pages-branch }}
+      run: rm -rf *
+    - name: Move build content in ${{ inputs.build-branch }} to ${{ inputs.gh-pages-branch }}
+      run: mv ${{ inputs.build-branch }}/${{ inputs.build-path }}/* ${{ inputs.gh-pages-branch }}
+    - name: Push changes to deploy
+      working-directory: ${{ inputs.gh-pages-branch }}
+      run: |
+        if ! git diff --no-ext-diff --quiet --exit-code; then
+          git add .
+          git config user.name "${{ inputs.commit-author }}"
+          git config user.email "${{ inputs.commit-email }}"
+          git commit -m "Deployment at ${{ steps.time.outputs.time }} UTC"
+          git push "https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" ${{ inputs.gh-pages-branch }}
+        fi
